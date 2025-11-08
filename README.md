@@ -1,6 +1,10 @@
 # Queuectl Backend
 Here we are creating this queuctl project for job worker management
 
+**To create the project**
+```zsh
+go mod init github.com/yourusername/myapp
+```
 - **To run the go project**
 ```zsh
 go run .
@@ -14,6 +18,11 @@ go build
 ```zsh
 ./binary_file
 ```
+- **To clean the cache memory**
+```zsh
+go clean cache
+```
+
 ### Why Golang
 - Golang is one of the fastest working programming languages
 - Golang is mainly used for micro-services making it more useful for jobs scheduling and all
