@@ -1,9 +1,7 @@
 package main
 
-import (
-	"fmt"
-)
+import "queuectl.backend/cmd"
 
 func main() {
-	fmt.Println("Hello Golang..")
+	cmd.Execute()
 }

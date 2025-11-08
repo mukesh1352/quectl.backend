@@ -4,7 +4,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/mukesh1352/go-api-starter/internal/job"
+	"queuectl.backend/internal/job"
 	"gorm.io/gorm"
 )
 
@@ -150,4 +150,7 @@ func (r *JobRepo) PreventRaceCondition(workerId string) (*job.Job, error) {
 	}
 	j.State = job.StateProcessing
 	return &j, nil
+}
+func (r *JobRepo) DB() *gorm.DB {
+	return r.db
 }

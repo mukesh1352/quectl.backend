@@ -66,3 +66,34 @@ go clean cache
 | **Config** | `queuectl config set max-retries 3` | Manage configuration (retry count, backoff, etc.) |
 
 ---
+
+## Folder Structure
+
+```
+.
+├── DESIGN.md
+├── LICENSE
+├── README.md
+├── cmd
+│   ├── dlq.go
+│   ├── enqueue.go
+│   ├── list.go
+│   ├── root.go
+│   └── worker.go
+├── go-api-starter
+├── go.mod
+├── go.sum
+├── internal
+│   ├── job
+│   │   └── model.go
+│   ├── queue
+│   │   ├── executor.go
+│   │   └── worker.go
+│   └── store
+│       ├── job_repo.go
+│       └── store.go
+├── main.go
+├── output
+├── queue.db
+└── queuectl
+```
