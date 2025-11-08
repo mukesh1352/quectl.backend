@@ -17,6 +17,7 @@ import (
 var (
 	workerCount int
 	timeoutFlag time.Duration
+	backoffBase time.Duration
 )
 
 var workerCmd = &cobra.Command{
@@ -24,13 +25,18 @@ var workerCmd = &cobra.Command{
 	Short: "Start one or more background workers to process queued jobs",
 	Long: `Start one or more queue workers.
 Each worker continuously polls for new jobs and executes them.
-Example:
-  queuectl worker start --count 3 --timeout 30s`,
+
+Examples:
+  queuectl worker start --count 3 --timeout 30s
+  queuectl worker start --count 2 --backoff-base 2s`,
 	Run: func(cmd *cobra.Command, args []string) {
 		CommonInit()
 
 		if workerCount <= 0 {
 			workerCount = 1
+		}
+		if backoffBase <= 0 {
+			backoffBase = 5 * time.Second
 		}
 
 		db, err := store.InitDB()
@@ -39,11 +45,11 @@ Example:
 		}
 		repo := store.NewJobRepo(db)
 
-		// Create a cancelable context for graceful shutdown
+		// Create cancelable context for graceful shutdown
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 		defer stop()
 
-		log.Printf("🚀 Starting %d worker(s) with timeout=%v", workerCount, timeoutFlag)
+		log.Printf("🚀 Starting %d worker(s) | timeout=%v | backoff-base=%v", workerCount, timeoutFlag, backoffBase)
 
 		var wg sync.WaitGroup
 		for i := 1; i <= workerCount; i++ {
@@ -56,7 +62,7 @@ Example:
 					ID:           workerID,
 					PollInterval: 2 * time.Second,
 					MaxSleepTime: 30 * time.Second,
-					RetryDelay:   5 * time.Second,
+					RetryDelay:   backoffBase, // ✅ configurable base delay
 					ExecTimeout:  timeoutFlag,
 				})
 				if err := worker.Run(ctx); err != nil {
@@ -74,5 +80,6 @@ Example:
 func init() {
 	workerCmd.Flags().IntVarP(&workerCount, "count", "c", 1, "number of workers to start")
 	workerCmd.Flags().DurationVar(&timeoutFlag, "timeout", time.Minute, "maximum execution time per job (e.g., 30s, 2m)")
+	workerCmd.Flags().DurationVar(&backoffBase, "backoff-base", 5*time.Second, "base retry backoff duration (e.g., 2s, 5s, 10s)")
 	rootCmd.AddCommand(workerCmd)
 }

@@ -8,16 +8,17 @@ import (
 	"queuectl.backend/internal/job"
 )
 
+// JobRepo handles all DB operations for jobs.
 type JobRepo struct {
 	db *gorm.DB
 }
 
-// NewJobRepo creates a new repository instance
+// NewJobRepo creates a new repository instance.
 func NewJobRepo(db *gorm.DB) *JobRepo {
 	return &JobRepo{db: db}
 }
 
-// Create inserts a new job into the database
+// Create inserts a new job into the database.
 func (r *JobRepo) Create(j *job.Job) error {
 	if j == nil {
 		return errors.New("job cannot be nil")
@@ -27,13 +28,16 @@ func (r *JobRepo) Create(j *job.Job) error {
 	return r.db.Create(j).Error
 }
 
-// FindPending fetches the next pending job (FIFO + priority-aware)
+// FindPending fetches the next job ready for execution.
+// It supports priority and run_at (delayed jobs).
 func (r *JobRepo) FindPending() (*job.Job, error) {
 	var j job.Job
 	tx := r.db.
-		Where("state = ? AND (run_at IS NULL OR run_at <= ?)", job.StatePending, time.Now().UTC()).
-		Order("priority DESC, created_at ASC"). // ✅ Priority-first ordering
+		Where("(state = ? OR state = ?) AND (run_at IS NULL OR run_at <= ?)",
+			job.StatePending, job.StateFailed, time.Now().UTC()).
+		Order("priority DESC, created_at ASC").
 		First(&j)
+
 	if tx.Error != nil {
 		if errors.Is(tx.Error, gorm.ErrRecordNotFound) {
 			return nil, nil
@@ -43,7 +47,7 @@ func (r *JobRepo) FindPending() (*job.Job, error) {
 	return &j, nil
 }
 
-// Update updates an existing job or its metadata
+// Update saves job updates (metadata, timestamps, etc.).
 func (r *JobRepo) Update(j *job.Job) error {
 	if j == nil {
 		return errors.New("job cannot be nil")
@@ -52,7 +56,7 @@ func (r *JobRepo) Update(j *job.Job) error {
 	return r.db.Save(j).Error
 }
 
-// Processing marks a job as being processed by a worker
+// Processing marks a job as being processed by a worker.
 func (r *JobRepo) Processing(j *job.Job) error {
 	if j == nil {
 		return errors.New("job cannot be nil")
@@ -61,7 +65,7 @@ func (r *JobRepo) Processing(j *job.Job) error {
 	return r.Update(j)
 }
 
-// MarkCompleted marks a job as successfully done
+// MarkCompleted marks a job as successfully completed.
 func (r *JobRepo) MarkCompleted(j *job.Job) error {
 	if j == nil {
 		return errors.New("job cannot be nil")
@@ -70,48 +74,59 @@ func (r *JobRepo) MarkCompleted(j *job.Job) error {
 	return r.Update(j)
 }
 
-// Failed handles retry logic or moves job to DLQ if max retries reached
+// Failed handles retry or moves the job to the DLQ after max retries.
 func (r *JobRepo) Failed(j *job.Job, errMsg string, baseDelay time.Duration) error {
 	if j == nil {
 		return errors.New("job cannot be nil")
 	}
+
 	j.Attempts++
 	j.LastError = &errMsg
 	now := time.Now().UTC()
+
 	if j.Attempts >= j.MaxRetries {
+		// Move to DLQ
 		j.State = job.StateDead
 		j.RunAt = nil
 	} else {
+		// Schedule retry with exponential backoff
 		j.State = job.StateFailed
-		delay := baseDelay * time.Duration(1<<(j.Attempts-1)) // exponential backoff
+		delay := baseDelay * time.Duration(1<<(j.Attempts-1))
 		nextRun := now.Add(delay)
 		j.RunAt = &nextRun
 	}
+
 	j.UpdatedAt = now
 	return r.db.Save(j).Error
 }
 
-// ListJobs retrieves jobs filtered by state and priority
+// ListJobs retrieves jobs filtered by states and sorted by priority + creation time.
 func (r *JobRepo) ListJobs(states []job.JobState, limit, offset int32, newestFirst bool) ([]job.Job, error) {
 	var jobs []job.Job
+
 	if limit <= 0 {
 		limit = 100
 	}
-	order := "priority DESC, created_at ASC" // ✅ always priority-first
+
+	order := "priority DESC, created_at ASC"
 	if newestFirst {
 		order = "priority DESC, created_at DESC"
 	}
+
 	query := r.db.Order(order).Offset(int(offset))
 	if len(states) > 0 {
 		query = query.Where("state IN ?", states)
 	}
+
 	if err := query.Find(&jobs).Error; err != nil {
 		return nil, err
 	}
+
 	return jobs, nil
 }
 
-// PreventRaceCondition ensures only one worker claims a pending job
+// PreventRaceCondition ensures that only one worker safely claims a job.
+// It includes retryable (failed) jobs once their run_at time is due.
 func (r *JobRepo) PreventRaceCondition(workerId string) (*job.Job, error) {
 	now := time.Now().UTC()
 	tx := r.db.Begin()
@@ -121,7 +136,8 @@ func (r *JobRepo) PreventRaceCondition(workerId string) (*job.Job, error) {
 
 	var j job.Job
 	err := tx.
-		Where("state = ? AND (run_at IS NULL OR run_at <= ?)", job.StatePending, now).
+		Where("(state = ? OR state = ?) AND (run_at IS NULL OR run_at <= ?)",
+			job.StatePending, job.StateFailed, now).
 		Order("priority DESC, created_at ASC").
 		Limit(1).
 		Take(&j).Error
@@ -134,8 +150,10 @@ func (r *JobRepo) PreventRaceCondition(workerId string) (*job.Job, error) {
 		return nil, err
 	}
 
+	// ✅ allow claiming from both pending and failed states
 	res := tx.Model(&job.Job{}).
-		Where("id = ? AND state = ?", j.ID, job.StatePending).
+		Where("id = ? AND (state = ? OR state = ?)",
+			j.ID, job.StatePending, job.StateFailed).
 		Updates(map[string]interface{}{
 			"state":      job.StateProcessing,
 			"updated_at": now,
@@ -158,10 +176,12 @@ func (r *JobRepo) PreventRaceCondition(workerId string) (*job.Job, error) {
 	return &j, nil
 }
 
+// DB returns the underlying database instance.
 func (r *JobRepo) DB() *gorm.DB {
 	return r.db
 }
 
+// MetricsSummary aggregates queue metrics.
 type MetricsSummary struct {
 	Total       int64
 	Pending     int64
@@ -173,11 +193,11 @@ type MetricsSummary struct {
 	AvgRetries  float64
 }
 
-// JobMetrics returns overall queue statistics and averages.
+// JobMetrics returns system-wide metrics and averages.
 func (r *JobRepo) JobMetrics() (MetricsSummary, error) {
 	var summary MetricsSummary
 
-	// Count by state
+	// Count states
 	if err := r.db.Model(&job.Job{}).Count(&summary.Total).Error; err != nil {
 		return summary, err
 	}
@@ -187,7 +207,7 @@ func (r *JobRepo) JobMetrics() (MetricsSummary, error) {
 	r.db.Model(&job.Job{}).Where("state = ?", job.StateFailed).Count(&summary.Failed)
 	r.db.Model(&job.Job{}).Where("state = ?", job.StateDead).Count(&summary.Dead)
 
-	// Calculate averages (avoid NULL issues)
+	// Calculate averages
 	r.db.Model(&job.Job{}).Select("COALESCE(AVG(duration), 0)").Scan(&summary.AvgDuration)
 	r.db.Model(&job.Job{}).Select("COALESCE(AVG(attempts), 0)").Scan(&summary.AvgRetries)
 
