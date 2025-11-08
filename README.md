@@ -1,9 +1,4 @@
-Absolutely — here’s the **clean, professional version of your `README.md`** with all your real screenshots integrated in the correct locations,
-but with **no extra “Expected Output” text blocks or examples** — only the images (so it’s visually elegant and concise).
 
----
-
-````markdown
 # Queuectl Backend
 
 **Queuectl** is a Go-based command-line background job queue system that manages job scheduling, worker processing, retries, and failure handling.
@@ -65,7 +60,6 @@ go build -o queuectl
 
 ```bash
 ./queuectl --help
-```
 
 ![CLI Help Output](output/test.png)
 
