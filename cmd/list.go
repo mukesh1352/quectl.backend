@@ -4,18 +4,27 @@ import (
 	"fmt"
 	"log"
 
-	"queuectl.backend/internal/job"
 	"github.com/spf13/cobra"
+	"queuectl.backend/internal/job"
+	"queuectl.backend/internal/store"
 )
 
-var stateFilter string
+var (
+	stateFilter string
+	showOutput  bool
+)
 
 var listCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List jobs by state (pending, processing, completed, failed, dead)",
-	Long:  "Display jobs on the queue",
+	Long:  "Display jobs in the queue with optional output display.",
 	Run: func(cmd *cobra.Command, args []string) {
 		CommonInit()
+		db, err := store.InitDB()
+		if err != nil {
+			log.Fatal("DB init failed:", err)
+		}
+		repo := store.NewJobRepo(db)
 
 		var states []job.JobState
 		if stateFilter != "" {
@@ -27,15 +36,19 @@ var listCmd = &cobra.Command{
 			log.Fatal("Failed to list jobs:", err)
 		}
 
-		fmt.Printf("📋 Listing jobs (state=%v):\n", stateFilter)
+		fmt.Printf("Listing jobs (state=%v):\n", stateFilter)
 		for _, j := range jobs {
 			fmt.Printf("- [%s] %s | Attempts: %d/%d | State: %s\n",
 				j.ID, j.Command, j.Attempts, j.MaxRetries, j.State)
+			if showOutput && j.Output != "" {
+				fmt.Printf("  Output:\n%s\n", j.Output)
+			}
 		}
 	},
 }
 
 func init() {
 	listCmd.Flags().StringVarP(&stateFilter, "state", "s", "", "filter by job state")
+	listCmd.Flags().BoolVarP(&showOutput, "show-output", "o", false, "display job output") // ✅ add this line
 	rootCmd.AddCommand(listCmd)
 }

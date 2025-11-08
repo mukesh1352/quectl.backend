@@ -70,30 +70,43 @@ go clean cache
 ## Folder Structure
 
 ```
+ queuectl.backend git:(main) tree
 .
-├── DESIGN.md
-├── LICENSE
-├── README.md
-├── cmd
-│   ├── dlq.go
-│   ├── enqueue.go
-│   ├── list.go
-│   ├── root.go
-│   └── worker.go
-├── go-api-starter
-├── go.mod
-├── go.sum
-├── internal
-│   ├── job
-│   │   └── model.go
-│   ├── queue
-│   │   ├── executor.go
-│   │   └── worker.go
-│   └── store
-│       ├── job_repo.go
-│       └── store.go
-├── main.go
-├── output
-├── queue.db
-└── queuectl
+|-- DESIGN.md
+|-- LICENSE
+|-- README.md
+|-- cmd
+|   |-- common.go
+|   |-- config.go
+|   |-- dlq.go
+|   |-- enqueue.go
+|   |-- list.go
+|   |-- root.go
+|   |-- status.go
+|   `-- worker.go
+|-- go-api-starter
+|-- go.mod
+|-- go.sum
+|-- internal
+|   |-- config
+|   |   `-- model.go
+|   |-- job
+|   |   |-- job_test.go
+|   |   |-- model.go
+|   |   `-- queue.db
+|   |-- queue
+|   |   |-- executor.go
+|   |   `-- worker.go
+|   `-- store
+|       |-- job_repo.go
+|       `-- store.go
+|-- main.go
+|-- output
+|   |-- go_test.png
+|   `-- output.png
+|-- queue.db
+|-- queuectl.backend
+`-- scripts
+    `-- test_demo.sh
+
 ```
