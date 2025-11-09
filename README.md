@@ -523,6 +523,8 @@ DLQ is empty
 * Integration with message queues (RabbitMQ, Kafka)
 
 ---
+**For Design Updates:**
+_See [DESIGN.md](./DESIGN.md) for deeper architectural details._
 
 ## License
 
