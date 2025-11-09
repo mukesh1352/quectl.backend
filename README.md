@@ -60,12 +60,30 @@ go build -o queuectl
 
 ```bash
 ./queuectl --help
+```
 
-![CLI Help Output](output/test.png)
+![CLI Help Output](output/help.png)
 
 ---
+### Why Golang
+- Golang is one of the fastest working programming languages
+- Golang is mainly used for micro-services making it more useful for jobs scheduling and all
+- High performance speeds
+- is converted to a binary file which can be used anywhere
+- Offers faster startups, lesser memory footprints and better concurrency handling compared to the JVM and all.
 
-## Usage Examples
+ ## CLI Commands Reference
+
+| **Category** | **Command Example** | **Description** |
+|---------------|----------------------|------------------|
+| **Enqueue** | `queuectl enqueue '{"id":"job1","command":"sleep 2"}'` | Add a new job to the queue |
+| **Workers** | `queuectl worker start --count 3` | Start one or more workers |
+|  | `queuectl worker stop` | Stop running workers gracefully |
+| **Status** | `queuectl status` | Show summary of all job states & active workers |
+| **List Jobs** | `queuectl list --state pending` | List jobs by state |
+| **DLQ** | `queuectl dlq list` / `queuectl dlq retry job1` | View or retry DLQ jobs |
+| **Config** | `queuectl config set max-retries 3` | Manage configuration (retry count, backoff, etc.) |
+
 
 ### 1. Enqueue a Job
 
@@ -87,7 +105,7 @@ go run main.go worker start --count 2 --timeout 30s
 
 ---
 
-### 3. Failed Job and DLQ Example
+### 3. Failed Job and DLQ(Dead Letter Queue)
 
 ```bash
 go run main.go enqueue '{"command":"exit 1"}'
@@ -157,6 +175,20 @@ Responsible for:
 * Job lifecycle management
 * Retry and DLQ transitions
 * Priority and scheduling logic
+#### Job Lifecycle
+
+The **JobRepo** component within the Storage Layer is responsible for maintaining the lifecycle of every job.
+Each job progresses through distinct states during its lifetime.
+
+| **State** | **Description** |
+|------------|-----------------|
+| `pending` | The job has been created and is waiting for a worker to pick it up |
+| `processing` | A worker is currently executing the job |
+| `completed` | The job has finished successfully |
+| `failed` | The job failed but will be retried (until max retries are reached) |
+| `dead` | The job has exceeded retry attempts and is moved to the Dead Letter Queue (DLQ) |
+
+This lifecycle is managed by the **store layer**, which updates job states and timestamps after each execution, retry, or failure.
 
 ### 3. Worker Layer (`internal/queue/`)
 
@@ -212,31 +244,6 @@ Manages concurrent job execution using goroutines:
 ---
 
 ## Testing Instructions
-
-### Run Unit Tests
-
-```bash
-go test ./...
-```
-
-![Go Test Output](output/go_test.png)
-
----
-
-### Manual Functional Test
-
-```bash
-# 1. Enqueue a job
-go run main.go enqueue '{"command":"echo Hello"}'
-
-# 2. Start worker
-go run main.go worker start --timeout 5s --backoff-base 2s
-
-# 3. Verify job completion
-go run main.go list --state completed
-```
-
-![Output Screenshot](output/output.png)
 
 ---
 
@@ -308,5 +315,4 @@ go run main.go list --state completed
 This project is licensed under the **MIT License**.
 See the [LICENSE](LICENSE) file for details.
 
-```
 
