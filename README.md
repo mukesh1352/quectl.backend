@@ -72,17 +72,20 @@ go build -o queuectl
 - is converted to a binary file which can be used anywhere
 - Offers faster startups, lesser memory footprints and better concurrency handling compared to the JVM and all.
 
- ## CLI Commands Reference
+##  **CLI Commands Reference**
 
 | **Category** | **Command Example** | **Description** |
 |---------------|----------------------|------------------|
 | **Enqueue** | `queuectl enqueue '{"id":"job1","command":"sleep 2"}'` | Add a new job to the queue |
 | **Workers** | `queuectl worker start --count 3` | Start one or more workers |
-|  | `queuectl worker stop` | Stop running workers gracefully |
-| **Status** | `queuectl status` | Show summary of all job states & active workers |
+|              | Press `Ctrl+C` to stop gracefully | Gracefully stop all active workers |
+| **Status** | `queuectl status` | Show summary of all job states and active workers |
 | **List Jobs** | `queuectl list --state pending` | List jobs by state |
-| **DLQ** | `queuectl dlq list` / `queuectl dlq retry job1` | View or retry DLQ jobs |
-| **Config** | `queuectl config set max-retries 3` | Manage configuration (retry count, backoff, etc.) |
+| **DLQ** | `queuectl dlq list` / `queuectl dlq retry job1` | View or retry jobs in the Dead Letter Queue |
+| **Stats** | `queuectl stats` | Show aggregated job metrics and performance stats |
+| **Config** | `queuectl config set max-retries 3` | View or modify configuration (retry count, backoff, etc.) |
+| **Web Dashboard** | `queuectl web` | Start a simple web dashboard for live queue monitoring |
+
 
 
 ### 1. Enqueue a Job
@@ -189,6 +192,22 @@ Each job progresses through distinct states during its lifetime.
 | `dead` | The job has exceeded retry attempts and is moved to the Dead Letter Queue (DLQ) |
 
 This lifecycle is managed by the **store layer**, which updates job states and timestamps after each execution, retry, or failure.
+
+### Implementation Note
+
+In the `store.InitDB()` function, **WAL (Write-Ahead Logging)** mode and a **busy timeout** were enabled to handle concurrent write operations gracefully:
+
+```go
+dsn := "queue.db?_journal_mode=WAL&_busy_timeout=5000"
+db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
+```
+This ensures the database can:
+
+- Retry briefly (up to 5 seconds) instead of instantly failing when locked
+
+- Support multiple workers reading simultaneously
+
+- Improve reliability and stability under concurrent workloads
 
 ### 3. Worker Layer (`internal/queue/`)
 
@@ -495,7 +514,7 @@ DLQ is empty
 ---
 
 ## Future Enhancements
-
+* Migration from SQLite to Postgres or Redis for faster distributed
 * Distributed worker coordination
 * REST API for remote management
 * WebSocket live updates for dashboard
