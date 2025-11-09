@@ -319,14 +319,27 @@ go test ./...
 Output
 ![Golang_test](output/test_golang.png)
 
-## Shell Script Testing
-**PS:(Macbook Users):
-Install BSD CoreUtils
-```zsh
-brew install coreutils
-```
-- **Run the Script**
-```
+### Shell Script Testing
+
+The project includes an automated shell script to test end-to-end functionality, including job enqueueing, worker execution, retries, and DLQ verification.
+
+> **macOS Users:**
+> Install GNU CoreUtils to enable the `timeout` command:
+> ```bash
+> brew install coreutils
+> ```
+> The script will automatically detect and use `gtimeout` if available.
+
+> **Windows Users:**
+> Run the script using **Git Bash** or **Windows Subsystem for Linux (WSL)** for full compatibility.
+
+> **Linux Users:**
+> No additional setup is required — the script works out of the box.
+
+### Run the Script
+Execute the end-to-end demo test:
+
+```bash
 bash scripts/test_demo.sh
 ```
 output
