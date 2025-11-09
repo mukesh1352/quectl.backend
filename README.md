@@ -320,6 +320,11 @@ Output
 ![Golang_test](output/test_golang.png)
 
 ## Shell Script Testing
+**PS:(Macbook Users):
+Install BSD CoreUtils
+```zsh
+brew install coreutils
+```
 - **Run the Script**
 ```
 bash scripts/test_demo.sh
