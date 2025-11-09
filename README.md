@@ -244,8 +244,185 @@ Manages concurrent job execution using goroutines:
 ---
 
 ## Testing Instructions
+# 1. **Basic Job Completion**
+- Command to run
+```zsh
+go run main.go enqueue '{"command":"echo Hello World"}'
+go run main.go worker start --timeout 5s
+go run main.go list --state completed
+```
+output
+![Test1](output/test_worker_success.png)
 
+# 2.**Failed Job Retries with Backoff and Moves to DLQ**
+```zsh
+go run main.go enqueue '{"command":"exit 1"}'
+go run main.go worker start --timeout 5s --backoff-base 2s
+```
+output
+![Test2](output/dlq_failure_test2.png)
+
+# 3.**Multiple Workers Process Jobs Without Overlap**
+```zsh
+go run main.go  enqueue '{"command":"echo Job 1"}'
+go run main.go enqueue '{"command":"echo Job 2"}'
+go run main.go enqueue '{"command":"echo Job 3"}'
+
+# Start the multiple worker processes
+go run main.go worker start --count 3 --timeout 10s
+```
+output
+![Test3](output/multiple_worker_test3.png)
+
+# 4.**Invalid Commands Failure Gracefully**
+- **First Enqueue a Job**
+```zsh
+go run main.go enqueue '{"command":"nonexistentcommand"}'
+```
+```zsh
+go run main.go worker start --timeout 5s --backoff-base 2s
+```
+**After a few tries this will push it into the Dead Letter Queue(DLQ)**
+- check the DLQ
+```zsh
+go run main.go dlq
+```
+output
+![test4](output/command_invalid_test4.png)
+
+# 5. **Job Data Survives Restart**
+- Enqueue a few jobs
+```zsh
+go run main.go enqueue '{"command":"echo Persisted Job 1"}'
+go run main.go enqueue '{"command":"echo Persisted Job 2"}'
+```
+- Start the worker process
+```zsh
+go run main.go worker start --timeout 10s
+```
+- Now restart the process
+```zsh
+go run main.go list
+```
+output
+![Test5](output/persistant_test5.png)
+**Job remains the database(queue.db) even after restart**
+
+# 6. **Graceful Shutdown**
+![GraceFul_Shutdown](output/graceful_shutdown.png)
 ---
+## Automated Tests
+- Run the build-in Go unit tests to validate repository and job logic:
+```zsh
+go test ./...
+```
+Output
+![Golang_test](output/test_golang.png)
+
+## Shell Script Testing
+- **Run the Script**
+```
+bash scripts/test_demo.sh
+```
+output
+```zsh
+➜  queuectl.backend git:(main) ✗ bash scripts/test_demo.sh
+
+==========================================
+  Running Queuectl End-to-End Demo Test
+==========================================
+
+[Cleanup] Removing existing queue.db...
+
+[1/5] Enqueueing jobs...
+2025/11/09 07:51:16 Database connected and ready...
+2025/11/09 07:51:16 Database initialized and repository ready
+Job job-1762654876920686000 enqueued successfully (immediate execution)
+2025/11/09 07:51:17 Database connected and ready...
+2025/11/09 07:51:17 Database initialized and repository ready
+Job job-1762654877012472000 enqueued successfully (immediate execution)
+2025/11/09 07:51:17 Database connected and ready...
+2025/11/09 07:51:17 Database initialized and repository ready
+Job job-1762654877106510000 enqueued successfully (immediate execution)
+
+[2/5] Current jobs (should all be pending):
+2025/11/09 07:51:18 Database connected and ready...
+2025/11/09 07:51:18 Database initialized and repository ready
+2025/11/09 07:51:18 Database connected and ready...
+Listing jobs (state=):
+- [job-1762654877106510000] sleep 1 && echo Job 3 done | Attempts: 0/3 | State: pending
+- [job-1762654877012472000] false | Attempts: 0/3 | State: pending
+- [job-1762654876920686000] echo Job 1 completed | Attempts: 0/3 | State: pending
+
+[3/5] Starting 2 workers for 10 seconds...
+2025/11/09 07:51:19 Database connected and ready...
+2025/11/09 07:51:19 Database initialized and repository ready
+2025/11/09 07:51:19 Database connected and ready...
+2025/11/09 07:51:19 🚀 Starting 2 worker(s) | timeout=5s | backoff-base=5s
+2025/11/09 07:51:19 [worker-2] started
+2025/11/09 07:51:19 [worker-1] started
+
+2025/11/09 07:51:19 /Users/mukesh/project/flam/queuectl.backend/internal/store/job_repo.go:157 database is locked
+[0.026ms] [rows:0] UPDATE `jobs` SET `state`="processing",`updated_at`="2025-11-09 02:21:19.956" WHERE (id = "job-1762654876920686000" AND (state = "pending" OR state = "failed")) AND `jobs`.`deleted_at` IS NULL
+2025/11/09 07:51:19 [worker-2] claim error: database is locked
+2025/11/09 07:51:19 [worker-1] processing job job-1762654876920686000 (echo Job 1 completed)
+2025/11/09 07:51:19 [worker-1] job job-1762654876920686000 completed successfully in 0.00s
+2025/11/09 07:51:19 [worker-1] processing job job-1762654877012472000 (false)
+2025/11/09 07:51:19 [worker-1] job job-1762654877012472000 failed (retry or DLQ): exit status 1
+2025/11/09 07:51:19 [worker-1] processing job job-1762654877106510000 (sleep 1 && echo Job 3 done)
+2025/11/09 07:51:20 [worker-1] job job-1762654877106510000 completed successfully in 1.01s
+
+2025/11/09 07:51:20 /Users/mukesh/project/flam/queuectl.backend/internal/store/job_repo.go:143 record not found
+[0.334ms] [rows:0] SELECT * FROM `jobs` WHERE ((state = "pending" OR state = "failed") AND (run_at IS NULL OR run_at <= "2025-11-09 02:21:20.977")) AND `jobs`.`deleted_at` IS NULL ORDER BY priority DESC, created_at ASC LIMIT 1
+2025/11/09 07:51:20 [worker-1] idle (no jobs). Sleeping for 2s...
+
+2025/11/09 07:51:21 /Users/mukesh/project/flam/queuectl.backend/internal/store/job_repo.go:143 record not found
+[0.745ms] [rows:0] SELECT * FROM `jobs` WHERE ((state = "pending" OR state = "failed") AND (run_at IS NULL OR run_at <= "2025-11-09 02:21:21.958")) AND `jobs`.`deleted_at` IS NULL ORDER BY priority DESC, created_at ASC LIMIT 1
+2025/11/09 07:51:21 [worker-2] idle (no jobs). Sleeping for 2s...
+
+2025/11/09 07:51:22 /Users/mukesh/project/flam/queuectl.backend/internal/store/job_repo.go:143 record not found
+[0.821ms] [rows:0] SELECT * FROM `jobs` WHERE ((state = "pending" OR state = "failed") AND (run_at IS NULL OR run_at <= "2025-11-09 02:21:22.979")) AND `jobs`.`deleted_at` IS NULL ORDER BY priority DESC, created_at ASC LIMIT 1
+2025/11/09 07:51:22 [worker-1] idle (no jobs). Sleeping for 4s...
+^C
+2025/11/09 07:51:23 /Users/mukesh/project/flam/queuectl.backend/internal/store/job_repo.go:143 record not found
+[0.665ms] [rows:0] SELECT * FROM `jobs` WHERE ((state = "pending" OR state = "failed") AND (run_at IS NULL OR run_at <= "2025-11-09 02:21:23.961")) AND `jobs`.`deleted_at` IS NULL ORDER BY priority DESC, created_at ASC LIMIT 1
+2025/11/09 07:51:23 [worker-2] idle (no jobs). Sleeping for 4s...
+^C^C^C2025/11/09 07:51:26 [worker-1] processing job job-1762654877012472000 (false)
+2025/11/09 07:51:26 [worker-1] job job-1762654877012472000 failed (retry or DLQ): exit status 1
+
+2025/11/09 07:51:26 /Users/mukesh/project/flam/queuectl.backend/internal/store/job_repo.go:143 record not found
+[0.427ms] [rows:0] SELECT * FROM `jobs` WHERE ((state = "pending" OR state = "failed") AND (run_at IS NULL OR run_at <= "2025-11-09 02:21:26.995")) AND `jobs`.`deleted_at` IS NULL ORDER BY priority DESC, created_at ASC LIMIT 1
+2025/11/09 07:51:26 [worker-1] idle (no jobs). Sleeping for 2s...
+^C^C^C
+2025/11/09 07:51:27 /Users/mukesh/project/flam/queuectl.backend/internal/store/job_repo.go:143 record not found
+[0.778ms] [rows:0] SELECT * FROM `jobs` WHERE ((state = "pending" OR state = "failed") AND (run_at IS NULL OR run_at <= "2025-11-09 02:21:27.963")) AND `jobs`.`deleted_at` IS NULL ORDER BY priority DESC, created_at ASC LIMIT 1
+2025/11/09 07:51:27 [worker-2] idle (no jobs). Sleeping for 8s...
+^C
+2025/11/09 07:51:28 /Users/mukesh/project/flam/queuectl.backend/internal/store/job_repo.go:143 record not found
+[0.650ms] [rows:0] SELECT * FROM `jobs` WHERE ((state = "pending" OR state = "failed") AND (run_at IS NULL OR run_at <= "2025-11-09 02:21:28.997")) AND `jobs`.`deleted_at` IS NULL ORDER BY priority DESC, created_at ASC LIMIT 1
+2025/11/09 07:51:28 [worker-1] idle (no jobs). Sleeping for 4s...
+
+[4/5] Checking job status:
+2025/11/09 07:51:30 Database connected and ready...
+2025/11/09 07:51:30 Database initialized and repository ready
+Job Queue Status:
+Total Jobs: 3
+Pending: 0
+Processing: 0
+Completed: 2
+Failed: 1
+Dead (DLQ): 0
+
+[5/5] Dead Letter Queue:
+2025/11/09 07:51:32 Database connected and ready...
+2025/11/09 07:51:32 Database initialized and repository ready
+2025/11/09 07:51:32 Database connected and ready...
+DLQ is empty
+
+==========================================
+ End-to-End Demo Test Complete!
+==========================================
+```
 
 ## Folder Structure
 
